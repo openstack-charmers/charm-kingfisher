@@ -1,0 +1,11 @@
+# Copyright 2021 chris
+# See LICENSE file for licensing details.
+name: kingfisher
+description: |
+  Kingfisher is a benchmarking charm that deploys Kubernetes on
+  OpenStack via ClusterAPI
+summary: |
+  TEMPLATE-TODO: fill out the charm's summary
+
+series:
+- focal
