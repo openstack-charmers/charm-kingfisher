@@ -1,3 +1,5 @@
+# This file is managed by Juju. Local changes will be overridden!
+
 # To start containerd behind a proxy you need to add an HTTPS_PROXY
 # environment variable in this file. HTTPS_PROXY is of the following form:
 # HTTPS_PROXY=http://username:password@proxy:port/
@@ -11,7 +13,7 @@ HTTPS_PROXY=http://squid.internal:3128
 # /var/snap/microk8s/current/args/kube-apiserver
 #
 # TODO: use Juju proxy vars
-NO_PROXY=10.5.0.0/16
+NO_PROXY=10.1.0.0/16,10.152.183.0/24,10.5.0.0/16
 #
 # Remember to restart MicroK8s after editing this file:
 #

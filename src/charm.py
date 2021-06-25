@@ -14,13 +14,14 @@ develop a new k8s charm using the Operator Framework:
 
 import logging
 import subprocess
+import yaml
 
 import charmhelpers.core.templating as ch_templating
 
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
-from ops.model import MaintenanceStatus
+from ops.model import BlockedStatus, MaintenanceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +36,45 @@ class KingfisherCharm(CharmBase):
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         # self.framework.observe(self.on.fortune_action, self._on_fortune_action)
-        self._stored.set_default(things=[])
+        self.framework.observe(self.on.update_status, self._update_status)
 
-    def _on_install(self, _):
+    def _update_status(self, _):
+        if self.credentials is None:
+            no_creds_msg = 'missing credentials access; grant with: juju trust'
+            # no creds provided
+            self.unit.status = BlockedStatus(message=no_creds_msg)
+
+    def _on_install(self, event):
         subprocess.check_call(['snap', 'install', '--classic', 'microk8s'])
         self.unit.status = MaintenanceStatus(message="Microk8s installed, waiting for ready.")
+
+    @property
+    def credentials(self):
+        return self._get_credentials()
+
+    def _get_credentials(self):
+        try:
+            result = subprocess.run(['credential-get'],
+                                    check=True,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+            creds_data = yaml.safe_load(result.stdout.decode('utf8'))
+            logger.info('Using credentials-get for credentials')
+            return creds_data
+        except subprocess.CalledProcessError as e:
+            if 'permission denied' not in e.stderr.decode('utf8'):
+                raise
+
+    def _on_config_changed(self, event):
+        """Just an example to show how to deal with changed configuration.
+
+        TEMPLATE-TODO: change this example to suit your needs.
+        If you don't need to handle config, you can remove this method,
+        the hook created in __init__.py for it, the corresponding test,
+        and the config.py file.
+
+        Learn more about config at https://juju.is/docs/sdk/config
+        """
         ch_templating.render(
             'containerd-env',
             '/var/snap/microk8s/current/args/containerd-env',
@@ -50,26 +85,20 @@ class KingfisherCharm(CharmBase):
         subprocess.check_call(['microk8s', 'stop'])
         try:
             subprocess.check_call(['microk8s', 'start'])
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
             # https://github.com/ubuntu/microk8s/issues/2363
-            pass
+            logger.warning("'microk8s start' failed: %s", e)
         subprocess.check_call(['microk8s', 'status', '--wait-ready'])
+        self.unit.status = MaintenanceStatus(message="MicroK8s is configured.")
+
+        if self.credentials is None:
+            self._update_status(event)
+            return
+        ch_templating.render(
+            'clouds.yaml', '/root/.config/openstack/clouds.yaml',
+            context=self.credentials)
         self.unit.status = MaintenanceStatus(message="Ready to run benchmark.")
-
-    def _on_config_changed(self, _):
-        """Just an example to show how to deal with changed configuration.
-
-        TEMPLATE-TODO: change this example to suit your needs.
-        If you don't need to handle config, you can remove this method,
-        the hook created in __init__.py for it, the corresponding test,
-        and the config.py file.
-
-        Learn more about config at https://juju.is/docs/sdk/config
-        """
-        current = self.config["thing"]
-        if current not in self._stored.things:
-            logger.debug("found a new thing: %r", current)
-            self._stored.things.append(current)
+        self._update_status(event)
 
     # def _on_httpbin_pebble_ready(self, event):
     #     """Define and start a workload using the Pebble API.

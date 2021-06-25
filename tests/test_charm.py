@@ -7,7 +7,10 @@ import unittest
 import unittest.mock as mock
 
 from charm import KingfisherCharm
-from ops.model import MaintenanceStatus
+from ops.model import (
+    BlockedStatus,
+    MaintenanceStatus,
+)
 from ops.testing import Harness
 
 
@@ -20,13 +23,25 @@ class TestCharm(unittest.TestCase):
     @mock.patch('charm.ch_templating')
     @mock.patch('charm.subprocess')
     def test_install(self, mock_subprocess, mock_templating):
-        # self.begin()
         self.harness.charm.on.install.emit()
         self.assertEqual(
             self.harness.model.unit.status,
-            MaintenanceStatus('Ready to run benchmark.'))
+            MaintenanceStatus('Microk8s installed, waiting for ready.'))
+        mock_subprocess.check_call.assert_called_once_with(
+            ['snap', 'install', '--classic', 'microk8s']
+        )
+
+    @mock.patch('charm.ch_templating')
+    @mock.patch('charm.subprocess')
+    def test_config_changed(self, mock_subprocess, mock_templating):
+        mock_subprocess.run.return_value.stdout.decode.return_value = "---"
+        # self.assertEqual(list(self.harness.charm._stored.things), [])
+        self.harness.update_config({})
+        self.assertEqual(
+            self.harness.model.unit.status,
+            BlockedStatus('missing credentials access; grant with: juju trust')
+        )
         mock_subprocess.check_call.assert_has_calls([
-            mock.call(['snap', 'install', '--classic', 'microk8s']),
             mock.call(['microk8s', 'stop']),
             mock.call(['microk8s', 'start']),
             mock.call(['microk8s', 'status', '--wait-ready']),
@@ -35,10 +50,17 @@ class TestCharm(unittest.TestCase):
             'containerd-env',
             '/var/snap/microk8s/current/args/containerd-env', context={})
 
-    def test_config_changed(self):
-        self.assertEqual(list(self.harness.charm._stored.things), [])
-        self.harness.update_config({"thing": "foo"})
-        self.assertEqual(list(self.harness.charm._stored.things), ["foo"])
+    @mock.patch('charm.ch_templating')
+    @mock.patch('charm.subprocess')
+    def test_config_changed_with_trust(self, mock_subprocess, mock_templating):
+        mock_subprocess.run.return_value.stdout.decode.return_value = "name: value"
+        # self.assertEqual(list(self.harness.charm._stored.things), [])
+        self.harness.update_config({})
+        self.assertEqual(
+            self.harness.model.unit.status,
+            MaintenanceStatus(message="Ready to run benchmark.")
+        )
+        self.assertEqual(self.harness.charm.credentials, {'name': 'value'})
 
     # def test_action(self):
     #     # the harness doesn't (yet!) help much with actions themselves
