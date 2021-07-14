@@ -13,44 +13,87 @@ develop a new k8s charm using the Operator Framework:
 """
 
 import logging
+import openstack
+import os
 import subprocess
 import yaml
 
 import charmhelpers.core.templating as ch_templating
+import charmhelpers.core.host as ch_host
 
 from ops.charm import CharmBase
-from ops.framework import StoredState
+from ops.framework import StoredState, BoundEvent
 from ops.main import main
-from ops.model import BlockedStatus, MaintenanceStatus
+from ops.model import (
+    ActiveStatus,
+    BlockedStatus,
+    MaintenanceStatus,
+    ModelError,
+)
+import ops_openstack.core
 
 logger = logging.getLogger(__name__)
 
 
-class KingfisherCharm(CharmBase):
+class KingfisherCharm(ops_openstack.core.OSBaseCharm):
     """Charm the service."""
 
+    PACKAGES = ["docker.io"]
     _stored = StoredState()
 
     def __init__(self, *args):
         super().__init__(*args)
+        super().register_status_check(self.status_check_trust)
+        super().register_status_check(self.status_check_resources)
+        self._stored.set_default(
+            cluster_api_initialized=False)
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
-        # self.framework.observe(self.on.fortune_action, self._on_fortune_action)
-        self.framework.observe(self.on.update_status, self._update_status)
+        self.framework.observe(self.on.deploy_action, self._on_deploy_action)
+        self.framework.observe(self.on.destroy_action, self._on_destroy_action)
 
-    def _update_status(self, _):
+    def status_check_trust(self):
         if self.credentials is None:
             no_creds_msg = 'missing credentials access; grant with: juju trust'
             # no creds provided
-            self.unit.status = BlockedStatus(message=no_creds_msg)
+            return BlockedStatus(message=no_creds_msg)
+        return ActiveStatus()
+    
+    def status_check_resources(self):
+        if None in [self.kind_path, self.clusterctl_path]:
+            msg = "Missing required resources for cluster-api."
+            return BlockedStatus(message=msg)
+        return ActiveStatus()
 
     def _on_install(self, event):
-        subprocess.check_call(['snap', 'install', '--classic', 'microk8s'])
-        self.unit.status = MaintenanceStatus(message="Microk8s installed, waiting for ready.")
+        subprocess.check_call(['snap', 'install', '--classic', 'kubectl'])
+        subprocess.check_call(['snap', 'install', 'yq'])
 
     @property
     def credentials(self):
         return self._get_credentials()
+
+    @property
+    def openstack_client(self):
+        return openstack.connect()
+
+    @property
+    def kind_path(self):
+        try:
+            path = self.model.resources.fetch("kind")
+            os.chmod(path, 0o755)
+            return path
+        except ModelError:
+            return None
+
+    @property
+    def clusterctl_path(self):
+        try:
+            path = self.model.resources.fetch("clusterctl")
+            os.chmod(path, 0o755)
+            return path
+        except ModelError:
+            return None
 
     def _get_credentials(self):
         try:
@@ -58,9 +101,13 @@ class KingfisherCharm(CharmBase):
                                     check=True,
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE)
-            creds_data = yaml.safe_load(result.stdout.decode('utf8'))
-            logger.info('Using credentials-get for credentials')
-            return creds_data
+            raw_creds_data = yaml.safe_load(result.stdout.decode('utf8'))
+            logger.info('Using credentials-get for credentials, got: %s' % raw_creds_data)
+            creds_data = raw_creds_data['credential']['attributes']
+            creds_data['endpoint'] = raw_creds_data['endpoint']
+            creds_data['region'] = raw_creds_data['region']
+            creds_data['cloud_name'] = raw_creds_data['name']
+            return dict((k.replace('-','_'),v) for k,v in creds_data.items())
         except subprocess.CalledProcessError as e:
             if 'permission denied' not in e.stderr.decode('utf8'):
                 raise
@@ -75,81 +122,57 @@ class KingfisherCharm(CharmBase):
 
         Learn more about config at https://juju.is/docs/sdk/config
         """
-        ch_templating.render(
-            'containerd-env',
-            '/var/snap/microk8s/current/args/containerd-env',
-            context={}
-        )
-        # doing stop and start as separate subprocess calls sometimes
-        # has the start exit 1
-        subprocess.check_call(['microk8s', 'stop'])
-        try:
-            subprocess.check_call(['microk8s', 'start'])
-        except subprocess.CalledProcessError as e:
-            # https://github.com/ubuntu/microk8s/issues/2363
-            logger.warning("'microk8s start' failed: %s", e)
-        subprocess.check_call(['microk8s', 'status', '--wait-ready'])
-        self.unit.status = MaintenanceStatus(message="MicroK8s is configured.")
-
+        with ch_host.restart_on_change({
+            '/etc/systemd/system/docker.service.d/http-proxy.conf': ['docker']
+        }):
+            ch_templating.render(
+                'http-proxy.conf', '/etc/systemd/system/docker.service.d/http-proxy.conf',
+                context={
+                    'http_proxy': 'http://squid.internal:3128',
+                    'https_proxy': 'http://squid.internal:3128',
+                    'no_proxy': '10.5.0.0/16,10.245.160.0/21',
+                }
+            )
+            subprocess.check_call(['systemctl', 'daemon-reload'])
         if self.credentials is None:
             self._update_status(event)
             return
+        ctxt = self.credentials
+        ctxt['config'] = dict((k.replace('-','_'),v) for k,v in self.model.config.items())
+        
         ch_templating.render(
             'clouds.yaml', '/root/.config/openstack/clouds.yaml',
             context=self.credentials)
-        self.unit.status = MaintenanceStatus(message="Ready to run benchmark.")
-        self._update_status(event)
+        # This has to be run after the above as it relies on clouds.yaml being present
+        if ctxt['config'].get('availability_zones') is None:
+            ctxt['config']['availability_zones'] = ','.join(list([
+                zone.name for zone in self.openstack_client.compute.availability_zones()]))
+        ch_templating.render(
+            'os_environment.sh', '/etc/profile.d/os_environment.sh',
+            context=ctxt)
+        ch_templating.render(
+            'env.sh', '/etc/profile.d/env.sh',
+            context=self.credentials)
+        if None in [self.kind_path, self.clusterctl_path]:
+            return
+        self.enable_cluster_api()
+        self._stored.is_started = True
 
-    # def _on_httpbin_pebble_ready(self, event):
-    #     """Define and start a workload using the Pebble API.
+    def enable_cluster_api(self):
+        if self._stored.cluster_api_initialized:
+            return
+        subprocess.check_call([self.kind_path, 'create', 'cluster'],
+                              cwd='/root')
+        subprocess.check_call(
+            [self.clusterctl_path, 'init', '--infrastructure', 'openstack'],
+            cwd='/root')
+        self._stored.cluster_api_initialized = True
 
-    #     TEMPLATE-TODO: change this example to suit your needs.
-    #     You'll need to specify the right entrypoint and environment
-    #     configuration for your specific workload. Tip: you can see the
-    #     standard entrypoint of an existing container using docker inspect
+    def _on_deploy_action(self, event):
+        pass
 
-    #     Learn more about Pebble layers at https://github.com/canonical/pebble
-    #     """
-    #     # Get a reference the container attribute on the PebbleReadyEvent
-    #     container = event.workload
-    #     # Define an initial Pebble layer configuration
-    #     pebble_layer = {
-    #         "summary": "httpbin layer",
-    #         "description": "pebble config layer for httpbin",
-    #         "services": {
-    #             "httpbin": {
-    #                 "override": "replace",
-    #                 "summary": "httpbin",
-    #                 "command": "gunicorn -b 0.0.0.0:80 httpbin:app -k gevent",
-    #                 "startup": "enabled",
-    #                 "environment": {"thing": self.model.config["thing"]},
-    #             }
-    #         },
-    #     }
-    #     # Add intial Pebble config layer using the Pebble API
-    #     container.add_layer("httpbin", pebble_layer, combine=True)
-    #     # Autostart any services that were defined with startup: enabled
-    #     container.autostart()
-    #     # Learn more about statuses in the SDK docs:
-    #     # https://juju.is/docs/sdk/constructs#heading--statuses
-    #     self.unit.status = ActiveStatus()
-
-    # def _on_fortune_action(self, event):
-    #     """Just an example to show how to receive actions.
-
-    #     TEMPLATE-TODO: change this example to suit your needs.
-    #     If you don't need to handle actions, you can remove this method,
-    #     the hook created in __init__.py for it, the corresponding test,
-    #     and the actions.py file.
-
-    #     Learn more about actions at https://juju.is/docs/sdk/actions
-    #     """
-    #     fail = event.params["fail"]
-    #     if fail:
-    #         event.fail(fail)
-    #     else:
-    #         event.set_results(
-    #             {"fortune": "A bug in the code is worth two in the documentation."})
+    def _on_destroy_action(self, event):
+        pass
 
 
 if __name__ == "__main__":

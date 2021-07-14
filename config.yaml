@@ -8,7 +8,59 @@
 # Learn more about config at: https://juju.is/docs/sdk/config
 
 options:
-  thing:
-    default: 🎁
-    description: A thing used by the charm.
+  kubernetes-version:
+    default: '1.21.1'
+    description: Kubernetes version to deploy
     type: string
+  control-plane-machine-flavor:
+    default: m1.small
+    description: Flavor to use for Kubernetes control-plane machine flavor
+    type: string
+  worker-machine-flavor:
+    default: m1.medium
+    description: Flavor to use for Kubernetes worker machine flavor
+    type: string
+  dns-nameservers:
+    default: '10.245.160.2'
+    description:
+    type: string
+  availability-zones:
+    default: 'nova'
+    description: | 
+      Availability Zones to place resources in. If left blank, will use
+      the availability zones configured in the cloud.
+    type: string
+  image-name: 
+    default: 'cluster-api'
+    description: ClusterAPI compatible image to use for instances
+    type: string
+  ssh-key-name: 
+    default: 'cluster-api'
+    description: SSH Key name to use
+    type: string
+  source:
+    type: string
+    default:
+    description: |
+      Optional configuration to support use of additional sources such as:
+        - ppa:myteam/ppa
+        - cloud:trusty-proposed/kilo
+        - http://my.archive.com/ubuntu main
+      The last option should be used in conjunction with the key configuration
+      option.
+      Note that a minimum ceph version of 0.48.2 is required for use with this
+      charm which is NOT provided by the packages in the main Ubuntu archive
+      for precise but is provided in the Ubuntu cloud archive.
+  key:
+    type: string
+    default:
+    description: |
+      Key ID to import to the apt keyring to support use with arbitary source
+      configuration from outside of Launchpad archives or PPA's.
+  ssl_ca:
+    type: string
+    default:
+    description: |
+      Base64 encoded SSL CA to use when contacting ceph-radosgw via TLS. Only
+      required if vault certificates are not in use and ceph-radosgw is using
+      an external CA.

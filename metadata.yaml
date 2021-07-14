@@ -9,3 +9,17 @@ summary: |
 
 series:
 - focal
+
+resources:
+  kind:
+    type: file
+    filename: kind
+    description: |
+      the kind binary, available to download from, for example,
+      https://kind.sigs.k8s.io/dl/v0.11.1/kind-linux-amd64
+  clusterctl:
+    type: file
+    filename: clusterctl
+    description: |
+      the clusterctl binary, available to download from, for example,
+      https://github.com/kubernetes-sigs/cluster-api/releases/download/v0.3.20/clusterctl-linux-amd64

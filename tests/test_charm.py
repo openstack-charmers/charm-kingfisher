@@ -62,12 +62,19 @@ class TestCharm(unittest.TestCase):
         )
         self.assertEqual(self.harness.charm.credentials, {'name': 'value'})
 
-    # def test_action(self):
-    #     # the harness doesn't (yet!) help much with actions themselves
-    #     action_event = Mock(params={"fail": ""})
-    #     self.harness.charm._on_fortune_action(action_event)
+    def test_deploy_action(self):
+        # the harness doesn't (yet!) help much with actions themselves
+        action_event = mock.Mock(params={"fail": ""})
+        self.harness.charm._on_deploy_action(action_event)
 
-    #     self.assertTrue(action_event.set_results.called)
+        # self.assertTrue(action_event.set_results.called)
+
+    def test_destroy_action(self):
+        # the harness doesn't (yet!) help much with actions themselves
+        action_event = mock.Mock(params={"fail": ""})
+        self.harness.charm._on_destroy_action(action_event)
+
+        # self.assertTrue(action_event.set_results.called)
 
     # def test_action_fail(self):
     #     action_event = Mock(params={"fail": "fail this"})
