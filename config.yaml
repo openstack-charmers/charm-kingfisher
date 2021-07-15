@@ -12,6 +12,14 @@ options:
     default: '1.21.1'
     description: Kubernetes version to deploy
     type: string
+  kubernetes-controllers:
+    default: 3
+    description: How many controllers to deploy in test workload clusters
+    type: int
+  kubernetes-workers:
+    default: 3
+    description: How many workers to deploy in test workload clusters
+    type: int
   control-plane-machine-flavor:
     default: m1.small
     description: Flavor to use for Kubernetes control-plane machine flavor

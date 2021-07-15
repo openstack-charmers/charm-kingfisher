@@ -169,10 +169,26 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
         self._stored.cluster_api_initialized = True
 
     def _on_deploy_action(self, event):
-        pass
+        output = subprocess.check_output([
+            self.clusterctl_path, 'config', 'cluster', 'test-cluster',
+            '--kubernetes-version', self.model.config.get('kubernetes-version'),
+            '--control-plane-machine-count',self.model.config.get('kubernetes-controllers'),
+            '--worker-machine-count',self.model.config.get('kubernetes-workers'),
+        ])
+        subprocess.check_call(
+            ['kubectl', 'apply', '-f', '-'],
+            input=output)
 
     def _on_destroy_action(self, event):
-        pass
+        output = subprocess.check_output([
+            self.clusterctl_path, 'config', 'cluster', 'test-cluster',
+            '--kubernetes-version', self.model.config.get('kubernetes-version'),
+            '--control-plane-machine-count', str(self.model.config.get('kubernetes-controllers')),
+            '--worker-machine-count', str(self.model.config.get('kubernetes-workers')),
+        ])
+        subprocess.check_call(
+            ['kubectl', 'delete', '-f', '-'],
+            input=output)
 
 
 if __name__ == "__main__":
