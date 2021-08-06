@@ -170,25 +170,33 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
 
     def _on_deploy_action(self, event):
         output = subprocess.check_output([
-            self.clusterctl_path, 'config', 'cluster', 'test-cluster',
-            '--kubernetes-version', self.model.config.get('kubernetes-version'),
-            '--control-plane-machine-count',self.model.config.get('kubernetes-controllers'),
-            '--worker-machine-count',self.model.config.get('kubernetes-workers'),
-        ])
-        subprocess.check_call(
+            '/bin/bash', '-c', "source /etc/profile; {}".format(" ".join([
+                str(self.clusterctl_path), 'config', 'cluster', 'test-cluster',
+                '--kubernetes-version', str(self.model.config.get('kubernetes-version')),
+                '--control-plane-machine-count', str(self.model.config.get('kubernetes-controllers')),
+                '--worker-machine-count', str(self.model.config.get('kubernetes-workers')),
+            ]))
+        ], cwd="/root")
+        # The below uses check_output even though we do not care about it's
+        # output because check_call doesn't accept an input keyword argument
+        subprocess.check_output(
             ['kubectl', 'apply', '-f', '-'],
-            input=output)
+            input=output, cwd="/root")
 
     def _on_destroy_action(self, event):
         output = subprocess.check_output([
-            self.clusterctl_path, 'config', 'cluster', 'test-cluster',
-            '--kubernetes-version', self.model.config.get('kubernetes-version'),
-            '--control-plane-machine-count', str(self.model.config.get('kubernetes-controllers')),
-            '--worker-machine-count', str(self.model.config.get('kubernetes-workers')),
-        ])
-        subprocess.check_call(
+            '/bin/bash', '-c', "source /etc/profile; {}".format(" ".join([
+                str(self.clusterctl_path), 'config', 'cluster', 'test-cluster',
+                '--kubernetes-version', str(self.model.config.get('kubernetes-version')),
+                '--control-plane-machine-count', str(self.model.config.get('kubernetes-controllers')),
+                '--worker-machine-count', str(self.model.config.get('kubernetes-workers')),
+            ]))
+        ], cwd="/root")
+        # The below uses check_output even though we do not care about it's
+        # output because check_call doesn't accept an input keyword argument
+        subprocess.check_output(
             ['kubectl', 'delete', '-f', '-'],
-            input=output)
+            input=output, cwd="/root")
 
 
 if __name__ == "__main__":
