@@ -21,12 +21,20 @@ options:
     description: How many workers to deploy in test workload clusters
     type: int
   control-plane-machine-flavor:
-    default: m1.small
-    description: Flavor to use for Kubernetes control-plane machine flavor
+    default: m1.medium
+    description: |
+      Flavor to use for Kubernetes control-plane machine flavor. It is important
+      that this flavor is large enough to run the control plane. This includes
+      requirements such as two CPU cores. See https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#before-you-begin
+      for more details.
     type: string
   worker-machine-flavor:
     default: m1.medium
-    description: Flavor to use for Kubernetes worker machine flavor
+    description: |
+      Flavor to use for Kubernetes worker machine flavor. It is important
+      that this flavor is large enough to run the workers. This includes
+      requirements such as two CPU cores. See https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#before-you-begin
+      for more details.
     type: string
   dns-nameservers:
     default: '10.245.160.2'
