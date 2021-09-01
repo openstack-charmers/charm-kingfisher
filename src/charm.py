@@ -184,19 +184,9 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
             input=output, cwd="/root")
 
     def _on_destroy_action(self, event):
-        output = subprocess.check_output([
-            '/bin/bash', '-c', "source /etc/profile; {}".format(" ".join([
-                str(self.clusterctl_path), 'config', 'cluster', 'test-cluster',
-                '--kubernetes-version', str(self.model.config.get('kubernetes-version')),
-                '--control-plane-machine-count', str(self.model.config.get('kubernetes-controllers')),
-                '--worker-machine-count', str(self.model.config.get('kubernetes-workers')),
-            ]))
-        ], cwd="/root")
-        # The below uses check_output even though we do not care about it's
-        # output because check_call doesn't accept an input keyword argument
-        subprocess.check_output(
-            ['kubectl', 'delete', '-f', '-'],
-            input=output, cwd="/root")
+        subprocess.check_call(
+            ['kubectl', 'delete', 'cluster', 'test-cluster'],
+            cwd="/root")
 
 
 if __name__ == "__main__":
