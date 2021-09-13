@@ -27,8 +27,9 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(
             self.harness.model.unit.status,
             MaintenanceStatus('Microk8s installed, waiting for ready.'))
-        mock_subprocess.check_call.assert_called_once_with(
-            ['snap', 'install', '--classic', 'microk8s']
+        mock_subprocess.check_call.assert_assert_has_calls(
+            mock.call(['snap', 'install', '--classic', 'microk8s']),
+            mock.call(['snap', 'install', '--classic', 'yq'])
         )
 
     @mock.patch('charm.ch_templating')
