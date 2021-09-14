@@ -36,6 +36,7 @@ configure this charm to refer to it.
 
 Once you're ready to deploy a workload cluster, you can do so with the `deploy` action:
 
+    juju deploy kingfisher --constraints mem=4G --trust
     juju run-action -m kingfisher --wait kingfisher/0 deploy
 
 This action will take a while to finish or timeout (configurable), and then the
@@ -64,6 +65,8 @@ Create and activate a virtualenv with the development requirements:
     virtualenv -p python3 venv
     source venv/bin/activate
     pip install -r requirements-dev.txt
+    charmcraft build
+    juju deploy --resource kind=../kind --resource clusterctl=../clusterctl ./kingfisher.charm --constraints mem=4G --trust
 
 ## Testing
 
