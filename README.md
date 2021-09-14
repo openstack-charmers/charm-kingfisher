@@ -2,7 +2,9 @@
 
 ## Description
 
-TODO: Describe your charm in a few paragraphs of Markdown
+Kingfisher is a stress tester for OpenStack clouds. Is uses Cluster-API to deploy
+and destroy a Kubernetes workload cluster on the same OpenStack that's being used
+to deploy Kingfisher.
 
 ## Usage
 
