@@ -204,33 +204,38 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
                 while not self._check_deploy_done():
                     time.sleep(1)
         except TimeoutError:
-            action_fail("Deployment timed out after {}" % self.timeout)
+            action_fail("Deployment timed out after {}".format(self.timeout))
 
     def _test_cluster_kubectl(self) -> Optional[str]:
         if not os.path.exists(self.TEST_CLUSTER_KUBECONFIG_PATH):
             try:
-                subprocess.check_call([
-                    '/bin/bash', '-c',
-                    "kubectl --kubeconfig=/root/.kube/config get "
-                    "secrets test-cluster-kubeconfig -o json | "
-                    "jq -r '.data.value' |"
-                    "base64 -d > '{}'".format(self.TEST_CLUSTER_KUBECONFIG_PATH)
-                ], cwd="/root")
-            except subprocess.subprocess.CalledProcessError:
-                try:
+                subprocess.check_call(
+                    [
+                        '/bin/bash', '-c',
+                        'kubectl --kubeconfig=/root/.kube/config get '
+                        'secrets test-cluster-kubeconfig -o json | '
+                        "jq -r '.data.value' |"
+                        "base64 -d > '{}'".format(self.TEST_CLUSTER_KUBECONFIG_PATH)
+                    ], cwd="/root",
+                    stderr=subprocess.DEVNULL)
+            except subprocess.CalledProcessError:
+                pass
+            try:
+                if os.path.getsize(self.TEST_CLUSTER_KUBECONFIG_PATH) == 0:
                     os.remove(self.TEST_CLUSTER_KUBECONFIG_PATH)
-                except FileNotFoundError:
-                    pass
+                    return None
+            except (FileNotFoundError, OSError,):
                 return None
         return self.TEST_CLUSTER_KUBECONFIG_PATH
 
-    def kubectl_get_workload_nodes(self):
+    def _kubectl_get_workload_nodes(self):
         kubeconfig = self._test_cluster_kubectl()
         if kubeconfig is None:
             return False
         try:
             output = subprocess.check_output(
-                ['kubectl', '--kubeconfig', kubeconfig, 'get', 'nodes', '--output=json'])
+                ['kubectl', '--kubeconfig', kubeconfig, 'get', 'nodes', '--output=json'],
+                stderr=subprocess.DEVNULL)
         except subprocess.CalledProcessError:
             return False
         nodes = json.loads(output)
@@ -239,18 +244,19 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
             self.model.config.get('kubernetes-workers'))
         return True
 
-    def kubectl_get_cluster(self):
+    def _kubectl_get_cluster(self):
         try:
             output = subprocess.check_output(
                 ['kubectl', '--kubeconfig=/root/.kube/config',
                  'get', 'cluster', 'test-cluster'],
-                cwd="/root")
+                cwd="/root",
+                stderr=subprocess.DEVNULL)
             return b'Provisioned' in output
         except subprocess.CalledProcessError:
             return False
 
     def _check_deploy_done(self):
-        return self.kubectl_get_cluster() and self.kubectl_get_workload_nodes()
+        return self._kubectl_get_cluster() and self._kubectl_get_workload_nodes()
 
     def _on_destroy_action(self, event):
         subprocess.check_call(
