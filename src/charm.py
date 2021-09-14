@@ -218,14 +218,14 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
                         "base64 -d > '{}'".format(self.TEST_CLUSTER_KUBECONFIG_PATH)
                     ], cwd="/root",
                     stderr=subprocess.DEVNULL)
-            except subprocess.CalledProcessError:
-                pass
+            except subprocess.CalledProcessError as err:
+                logging.warning("Could not retrieve config from kubectl: {}".format(err))
             try:
                 if os.path.getsize(self.TEST_CLUSTER_KUBECONFIG_PATH) == 0:
                     os.remove(self.TEST_CLUSTER_KUBECONFIG_PATH)
                     return None
-            except (FileNotFoundError, OSError,):
-                return None
+            except (FileNotFoundError, OSError,) as err:
+                logging.warning("Could not store config: {}".format(err))
         return self.TEST_CLUSTER_KUBECONFIG_PATH
 
     def _kubectl_get_workload_nodes(self):

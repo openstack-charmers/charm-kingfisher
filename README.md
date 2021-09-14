@@ -27,6 +27,35 @@ previous link that can help guide a deployer is below:
     export PATH="$PATH:/root/image-builder/images/capi/.local/bin"
     make deps-qemu
     make build-qemu-ubuntu-2004
+    openstack image create --disk-format=qcow2 --container-format=bare --file ~/ubuntu-2004-kube-v1.20.9 cluster-api
+
+In addition to the customised image, it is necessary to create an SSH key and then
+configure this charm to refer to it.
+
+    openstack keypair create --public-key ~/.ssh/id_rsa.pub cluster-api
+
+Once you're ready to deploy a workload cluster, you can do so with the `deploy` action:
+
+    juju run-action -m kingfisher --wait kingfisher/0 deploy
+
+This action will take a while to finish or timeout (configurable), and then the
+workload cluster can be cleaned up with the `destroy` action:
+
+    juju run-action -m kingfisher --wait kingfisher/0 destroy
+
+### Troubleshooting
+
+When a deployment fails, it's usually due to resource errors on the cloud. Kingfisher
+requires that Octavia is deployed in the cloud, and that an SSH key has been uploaded
+in the tenant that's being used for testing. To follow along with what ClusterAPI is
+doing, it's possible to tail the logs on the kingfisher node:
+
+    kubectl  -n capo-system logs -l control-plane=capo-controller-manager -c manager --follow
+
+In the event that one machine has been created but then the deployment has stopped, it
+is possible to add security group rules to allow SSH, and add a route to the tenant's
+router, at which point the deployed SSH key can be used to connect to the control plane
+instance. The thing to look at on the instance is the cloud-init-output.log in /var/log.
 
 ## Developing
 
