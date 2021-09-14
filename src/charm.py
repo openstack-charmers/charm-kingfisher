@@ -14,7 +14,7 @@ develop a new k8s charm using the Operator Framework:
 
 import json
 import logging
-from charmhelpers.core.hookenv import action_fail
+from charmhelpers.core.hookenv import action_fail, service_name
 import openstack
 import os
 import subprocess
@@ -123,6 +123,28 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
             creds_data['endpoint'] = raw_creds_data['endpoint']
             creds_data['region'] = raw_creds_data['region']
             creds_data['cloud_name'] = raw_creds_data['name']
+
+            ca_cert = None
+            # seems like this might have changed at some point;
+            # newer controllers return the latter
+            trust_ca_key = {'ca-certificates', 'cacertificates'} & raw_creds_data.keys()
+            if trust_ca_key:
+                # see K8s commit e3c8a0ceb66816433b095c4d734663e1b1e0e4ea
+                # K8s in-tree cloud provider code is not flexible enough
+                # to accept multiple certs that could be provided by Juju
+                # so we can grab the first one only and hope it is the
+                # right one
+                ca_certificates = raw_creds_data[trust_ca_key.pop()]
+                if ca_certificates:
+                    ca_cert = ca_certificates[0]
+            elif 'endpoint-tls-ca' in raw_creds_data:
+                ca_cert = raw_creds_data['endpoint-tls-ca']
+            if ca_cert is not None:
+                ca_file = "/var/lib/charm/{}/ca.crt".format(service_name())
+                os.mkdir(os.path.dirname(ca_file))
+                ch_templating.render('ceph.conf', ca_file, {'ca': ca_cert}, perms=0o644)
+                creds_data['cacert'] = ca_file
+                
             return dict((k.replace('-', '_'), v) for k, v in creds_data.items())
         except subprocess.CalledProcessError as e:
             if 'permission denied' not in e.stderr.decode('utf8'):
