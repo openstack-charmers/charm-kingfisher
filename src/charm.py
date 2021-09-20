@@ -144,7 +144,6 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
                 os.mkdir(os.path.dirname(ca_file))
                 ch_templating.render('ceph.conf', ca_file, {'ca': ca_cert}, perms=0o644)
                 creds_data['cacert'] = ca_file
-                
             return dict((k.replace('-', '_'), v) for k, v in creds_data.items())
         except subprocess.CalledProcessError as e:
             if 'permission denied' not in e.stderr.decode('utf8'):
@@ -173,7 +172,7 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
             )
             subprocess.check_call(['systemctl', 'daemon-reload'])
         if self.credentials is None:
-            self._update_status(event)
+            self.update_status()
             return
         ctxt = self.credentials
         ctxt['config'] = dict((k.replace('-', '_'), v) for k, v in self.model.config.items())

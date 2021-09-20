@@ -20,60 +20,115 @@ class TestCharm(unittest.TestCase):
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
+    @mock.patch('charm.KingfisherCharm.install_pkgs')
     @mock.patch('charm.ch_templating')
     @mock.patch('charm.subprocess')
-    def test_install(self, mock_subprocess, mock_templating):
+    def test_install(self, mock_subprocess, mock_templating, mock_install_pkgs):
         self.harness.charm.on.install.emit()
         self.assertEqual(
             self.harness.model.unit.status,
-            MaintenanceStatus('Microk8s installed, waiting for ready.'))
-        mock_subprocess.check_call.assert_assert_has_calls(
-            mock.call(['snap', 'install', '--classic', 'microk8s']),
-            mock.call(['snap', 'install', '--classic', 'yq'])
-        )
+            MaintenanceStatus(''))
+        mock_subprocess.check_call.assert_has_calls([
+            mock.call(['snap', 'install', '--classic', 'kubectl']),
+            mock.call(['snap', 'install', 'yq']),
+            mock.call(['snap', 'install', 'jq']),
+        ])
+        mock_install_pkgs.assert_called_once()
 
-    @mock.patch('charm.ch_templating')
     @mock.patch('charm.subprocess')
-    def test_config_changed(self, mock_subprocess, mock_templating):
-        mock_subprocess.run.return_value.stdout.decode.return_value = "---"
-        # self.assertEqual(list(self.harness.charm._stored.things), [])
+    @mock.patch('charm.ch_templating')
+    @mock.patch('charm.KingfisherCharm._get_credentials')
+    def test_config_changed(self, mock_get_credentials, mock_templating, mock_subprocess):
+        mock_get_credentials.return_value = None
         self.harness.update_config({})
         self.assertEqual(
             self.harness.model.unit.status,
             BlockedStatus('missing credentials access; grant with: juju trust')
         )
-        mock_subprocess.check_call.assert_has_calls([
-            mock.call(['microk8s', 'stop']),
-            mock.call(['microk8s', 'start']),
-            mock.call(['microk8s', 'status', '--wait-ready']),
-        ])
+        mock_get_credentials.assert_called()
         mock_templating.render.assert_called_once_with(
-            'containerd-env',
-            '/var/snap/microk8s/current/args/containerd-env', context={})
+            'http-proxy.conf',
+            '/etc/systemd/system/docker.service.d/http-proxy.conf',
+            context={
+                'http_proxy': 'http://squid.internal:3128',
+                'https_proxy': 'http://squid.internal:3128',
+                'no_proxy': '10.5.0.0/16,10.245.160.0/21'})
+        mock_subprocess.check_call.assert_has_calls([
+            mock.call(['systemctl', 'daemon-reload']),
+        ])
 
+    @mock.patch('charm.KingfisherCharm._get_credentials')
     @mock.patch('charm.ch_templating')
     @mock.patch('charm.subprocess')
-    def test_config_changed_with_trust(self, mock_subprocess, mock_templating):
-        mock_subprocess.run.return_value.stdout.decode.return_value = "name: value"
-        # self.assertEqual(list(self.harness.charm._stored.things), [])
+    def test_config_changed_with_trust(self, mock_subprocess, mock_templating,
+                                       mock_get_credentials):
+        mock_get_credentials.return_value = {'name': 'value'}
         self.harness.update_config({})
         self.assertEqual(
             self.harness.model.unit.status,
-            MaintenanceStatus(message="Ready to run benchmark.")
+            MaintenanceStatus(message="")
         )
-        self.assertEqual(self.harness.charm.credentials, {'name': 'value'})
+        expected_context = {
+            'name': 'value',
+            'config': {
+                'kubernetes_version': '1.21.1',
+                'kubernetes_controllers': 3, 'kubernetes_workers': 3,
+                'control_plane_machine_flavor': 'm1.medium',
+                'worker_machine_flavor': 'm1.medium',
+                'dns_nameservers': '10.245.160.2', 'availability_zones': 'nova',
+                'image_name': 'cluster-api', 'ssh_key_name': 'cluster-api',
+                'source': None, 'key': None, 'ssl_ca': None, 'timeout': 60}}
+        mock_templating.render.assert_has_calls([
+            mock.call(
+                'http-proxy.conf',
+                '/etc/systemd/system/docker.service.d/http-proxy.conf',
+                context={
+                    'http_proxy': 'http://squid.internal:3128',
+                    'https_proxy': 'http://squid.internal:3128',
+                    'no_proxy': '10.5.0.0/16,10.245.160.0/21'}),
+            mock.call(
+                'clouds.yaml',
+                '/root/.config/openstack/clouds.yaml',
+                context=expected_context),
+            mock.call(
+                'os_environment.sh',
+                '/etc/profile.d/os_environment.sh',
+                context=expected_context),
+            mock.call(
+                'env.sh',
+                '/etc/profile.d/env.sh',
+                context=expected_context)
+        ])
 
-    def test_deploy_action(self):
+    @mock.patch('charm.KingfisherCharm._check_deploy_done')
+    @mock.patch('charm.subprocess.check_output')
+    def test_deploy_action(self, mock_check_output, mock_check_deploy_done):
         # the harness doesn't (yet!) help much with actions themselves
         action_event = mock.Mock(params={"fail": ""})
+        mock_check_deploy_done.return_value = True
+        mock_output = mock.MagicMock()
+        mock_check_output.return_value = mock_output
         self.harness.charm._on_deploy_action(action_event)
-
+        mock_check_deploy_done.assert_called_once()
+        mock_check_output.assert_has_calls([
+            mock.call([
+                '/bin/bash', '-c',
+                'source /etc/profile; None config cluster test-cluster '
+                '--kubernetes-version 1.21.1 --control-plane-machine-count 3 '
+                '--worker-machine-count 3'], cwd='/root'),
+            mock.call(['kubectl', 'apply', '-f', '-'], input=mock_output, cwd='/root')])
         # self.assertTrue(action_event.set_results.called)
 
-    def test_destroy_action(self):
+    @mock.patch('charm.subprocess.check_call')
+    def test_destroy_action(self, mock_check_call):
         # the harness doesn't (yet!) help much with actions themselves
         action_event = mock.Mock(params={"fail": ""})
         self.harness.charm._on_destroy_action(action_event)
+        mock_check_call.assert_called_once_with(
+            ['kubectl', '--kubeconfig=/root/.kube/config',
+             'delete', 'cluster', 'test-cluster'],
+            cwd="/root"
+        )
 
         # self.assertTrue(action_event.set_results.called)
 

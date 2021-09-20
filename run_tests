@@ -14,5 +14,5 @@ fi
 
 flake8 -v
 echo "Running the unit tests is currently disabled"
-# coverage run --source=src -m unittest -v "$@"
-# coverage report -m
+coverage run --source=src -m unittest -v "$@"
+coverage report -m
