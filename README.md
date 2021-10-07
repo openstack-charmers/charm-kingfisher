@@ -31,6 +31,9 @@ previous link that can help guide a deployer is below:
     make build-qemu-ubuntu-2004
     openstack image create --disk-format=qcow2 --container-format=bare --file ~/ubuntu-2004-kube-v1.20.9 cluster-api
 
+In the above example, the http_proxy and https_proxy should be configured
+with any local proxies that are needed.
+
 In addition to the customised image, it is necessary to create an SSH key and then
 configure this charm to refer to it.
 

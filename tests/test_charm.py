@@ -35,10 +35,16 @@ class TestCharm(unittest.TestCase):
         ])
         mock_install_pkgs.assert_called_once()
 
+    @mock.patch('charm.os')
     @mock.patch('charm.subprocess')
     @mock.patch('charm.ch_templating')
     @mock.patch('charm.KingfisherCharm._get_credentials')
-    def test_config_changed(self, mock_get_credentials, mock_templating, mock_subprocess):
+    def test_config_changed(self, mock_get_credentials, mock_templating, mock_subprocess,
+                            mock_os):
+        mock_os.getenv.side_effect = [
+            'http://squid.internal:3128',
+            'http://squid.internal:3128',
+            '10.0.0.0/8']
         mock_get_credentials.return_value = None
         self.harness.update_config({})
         self.assertEqual(
@@ -52,16 +58,18 @@ class TestCharm(unittest.TestCase):
             context={
                 'http_proxy': 'http://squid.internal:3128',
                 'https_proxy': 'http://squid.internal:3128',
-                'no_proxy': '10.5.0.0/16,10.245.160.0/21'})
+                'no_proxy': '10.0.0.0/8'})
         mock_subprocess.check_call.assert_has_calls([
             mock.call(['systemctl', 'daemon-reload']),
         ])
 
+    @mock.patch('charm.os')
     @mock.patch('charm.KingfisherCharm._get_credentials')
     @mock.patch('charm.ch_templating')
     @mock.patch('charm.subprocess')
     def test_config_changed_with_trust(self, mock_subprocess, mock_templating,
-                                       mock_get_credentials):
+                                       mock_get_credentials, mock_os):
+        mock_os.getenv.return_value = None
         mock_get_credentials.return_value = {'name': 'value'}
         self.harness.update_config({})
         self.assertEqual(
@@ -82,10 +90,7 @@ class TestCharm(unittest.TestCase):
             mock.call(
                 'http-proxy.conf',
                 '/etc/systemd/system/docker.service.d/http-proxy.conf',
-                context={
-                    'http_proxy': 'http://squid.internal:3128',
-                    'https_proxy': 'http://squid.internal:3128',
-                    'no_proxy': '10.5.0.0/16,10.245.160.0/21'}),
+                context={}),
             mock.call(
                 'clouds.yaml',
                 '/root/.config/openstack/clouds.yaml',

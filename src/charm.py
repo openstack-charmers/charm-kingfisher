@@ -162,13 +162,14 @@ class KingfisherCharm(ops_openstack.core.OSBaseCharm):
         with ch_host.restart_on_change({
             '/etc/systemd/system/docker.service.d/http-proxy.conf': ['docker']
         }):
+            ctxt = {}
+            for var in ['HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']:
+                proxy = os.getenv('JUJU_CHARM_{}'.format(var))
+                if proxy is not None:
+                    ctxt[var.lower()] = proxy
             ch_templating.render(
                 'http-proxy.conf', '/etc/systemd/system/docker.service.d/http-proxy.conf',
-                context={
-                    'http_proxy': 'http://squid.internal:3128',
-                    'https_proxy': 'http://squid.internal:3128',
-                    'no_proxy': '10.5.0.0/16,10.245.160.0/21',
-                }
+                context=ctxt
             )
             subprocess.check_call(['systemctl', 'daemon-reload'])
         if self.credentials is None:
