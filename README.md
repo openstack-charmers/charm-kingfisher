@@ -1,5 +1,8 @@
 # kingfisher
 
+| :zap:        Kingfisher is a test charm, and care should be taken when using it. It tries not to but may destroy the cloud you run it on.   |
+|-----------------------------------------|
+
 ## Description
 
 Kingfisher is a stress tester for OpenStack clouds. Is uses Cluster-API to deploy
